@@ -591,8 +591,9 @@ class ComputerScreen(pygame.sprite.Sprite):
 
         elif command == ".run":
             if args:
+                self.current_file=args[0]
                 self.run_program(args[0])
-      
+                
             else:
                 self.output_lines.append("用法: .run <file name>")
 
