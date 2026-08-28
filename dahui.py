@@ -50,7 +50,7 @@ while running:
     
     
     dog_and_camera.all_sprite.update()
-    dog_and_camera.all_sprite.draw()
+    dog_and_camera.all_sprite.draw(screen)
     dog_sprite.draw(screen)
     player_book.update(screen,book_and_computer)#书的更新
     # 绘制电脑系统（如果电脑标志为真）

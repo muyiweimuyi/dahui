@@ -35,7 +35,7 @@ CARD_START_X = COMPUTER_X + 50
 CARD_START_Y = COMPUTER_Y +650
 CARD_GAP_X = 100       # 卡片之间的间距
 #==========读写入==========
-PROGRAM_DIR="program.json"
+PROGRAM_DIR="program"
 # ========== 精灵类定义 ==========
 
 class Paper(pygame.sprite.Sprite):
@@ -98,6 +98,7 @@ class ComputerScreen(pygame.sprite.Sprite):
         self.vivisible_lines=[]
         self.mode="command"
         self.font_y=self.font.get_height()
+        self.current_file = ""
     def update(self):
         if not self.is_on:
             return
@@ -179,7 +180,9 @@ class ComputerScreen(pygame.sprite.Sprite):
             if self.edit_line_index < len(self.edit_lines) - 1:
                 self.edit_line_index += 1
                 self.input_pos = min(self.input_pos, len(self.edit_lines[self.edit_line_index]))
-
+        elif event.key ==pygame.K_ESCAPE:
+            self.save_program(self.current_file)
+            self.mode = "command"
     def update_editor_display(self):
         self.image.fill(self.screen_color)
 
@@ -282,6 +285,7 @@ class ComputerScreen(pygame.sprite.Sprite):
             self.edit_line_index = 0
             self.input_pos = 0
             self.output_lines.append(f"已创建新文件 {name}")
+            self.mode="editor"
             return True
 
         # 文件存在，正常读取
@@ -293,12 +297,13 @@ class ComputerScreen(pygame.sprite.Sprite):
             self.edit_line_index = 0
             self.input_pos = 0
             self.output_lines.append(f"已读取 {name}")
+            self.mode="editor"
             return True
 
         except Exception as e:
             self.output_lines.append(f"读取失败: {e}")
             return False
-        self.mode="editor"
+        
     def save_program(self, name):
         """按名字保存当前编辑器内容，不存在则创建"""
         if not os.path.exists(PROGRAM_DIR):
@@ -319,9 +324,11 @@ class ComputerScreen(pygame.sprite.Sprite):
             with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             self.output_lines.append(f"已保存 {name}")
+            self.mode == "command"
             return True
         except Exception as e:
             self.output_lines.append(f"保存失败: {e}")
+            self.mode == "command"
             return False
     def list_programs(self):
         """列出 programs 目录下所有可读的 JSON 文件"""
@@ -347,6 +354,7 @@ class ComputerScreen(pygame.sprite.Sprite):
         except Exception as e:
             self.output_lines.append(f"读取目录失败: {e}")
             return []
+    def run_porgram(self,)
     def execute_command(self):
         parts = self.input_text.strip().split()
 
@@ -370,6 +378,7 @@ class ComputerScreen(pygame.sprite.Sprite):
         elif command == ".open":
             if args:
                 self.load_program(args[0])
+                self.current_file=args[0]
             else:
                 self.output_lines.append(" .open need argumn  <file name>")
 
@@ -459,4 +468,4 @@ def computer_update(screen,flag):
     if computer_flag:
         computer_sprite.draw(screen)
 
-    #"ASM-2100 Terminal Ready.", "Type HELP for commands."
+    #"ASM-2100 Terminal Ready.", "Type HELP for commands."argument: 
