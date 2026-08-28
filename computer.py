@@ -82,14 +82,14 @@ class ComputerScreen(pygame.sprite.Sprite):
         global text_y
         global text_size
         global PROGRAM_DIR
-        self.font = pygame.font.Font("k8x12-2.ttf", text_size)
+        self.font = pygame.font.Font("unifont-16.0.04.ttf", text_size)
         self.width = width
         self.height = height
         self.image = pygame.Surface((width, height))
         self.rect = self.image.get_rect(topleft=(x, y))
         self.is_on = True
         self.screen_color = (0, 0, 0)
-        self.output_lines = ["ASM-2100 Terminal Ready.", "Type HELP for commands."]
+        self.output_lines = ["ASM-2100 Terminal Ready.", "Type .help for commands."]
         self.text = []
         self.input_text=""
         self.scoll_pos=0
@@ -128,7 +128,7 @@ class ComputerScreen(pygame.sprite.Sprite):
             self.command_line(event)
         elif self.mode == "editor":
             self.editor_line(event)   # 以后拆分编辑器
-
+#===============渲染字符=====
     def get_outputline(self):
         total = len(self.output_lines)
         end = total - self.scoll_pos
@@ -182,7 +182,6 @@ class ComputerScreen(pygame.sprite.Sprite):
                 self.input_pos = min(self.input_pos, len(self.edit_lines[self.edit_line_index]))
         elif event.key ==pygame.K_ESCAPE:
             self.save_program(self.current_file)
-            self.mode = "command"
     def update_editor_display(self):
         self.image.fill(self.screen_color)
 
@@ -266,6 +265,7 @@ class ComputerScreen(pygame.sprite.Sprite):
             (input_x + 1, input_y),               # 加1是因为提示符 ">"
             (input_x + 1, input_y + text_size)
         )
+ #=========写入与读取=============================
     def load_program(self, name):
         filepath = os.path.join(PROGRAM_DIR, name + ".json")
 
@@ -305,31 +305,26 @@ class ComputerScreen(pygame.sprite.Sprite):
             return False
         
     def save_program(self, name):
-        """按名字保存当前编辑器内容，不存在则创建"""
+        if not name:
+            self.output_lines.append("没有文件名，无法保存")
+            return False
+
         if not os.path.exists(PROGRAM_DIR):
             os.makedirs(PROGRAM_DIR)
 
         filepath = os.path.join(PROGRAM_DIR, name + ".json")
-
-        # 当前编辑行写回列表
-        if self.edit_line_index < len(self.edit_lines):
-            self.edit_lines[self.edit_line_index] = self.input_text
 
         data = {
             "name": name,
             "lines": self.edit_lines,
         }
 
-        try:
-            with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            self.output_lines.append(f"已保存 {name}")
-            self.mode == "command"
-            return True
-        except Exception as e:
-            self.output_lines.append(f"保存失败: {e}")
-            self.mode == "command"
-            return False
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+        self.output_lines.append(f"已保存 {name}")
+        self.mode = "command"
+        return True
     def list_programs(self):
         """列出 programs 目录下所有可读的 JSON 文件"""
         if not os.path.exists(PROGRAM_DIR):
@@ -354,7 +349,219 @@ class ComputerScreen(pygame.sprite.Sprite):
         except Exception as e:
             self.output_lines.append(f"读取目录失败: {e}")
             return []
-    def run_porgram(self,)
+    def run_program(self, name):
+        """运行指定名字的程序文件"""
+        filepath = os.path.join(PROGRAM_DIR, name + ".json")
+
+        if not os.path.exists(filepath):
+            self.output_lines.append(f"文件不存在: {name}")
+            return
+
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            lines = data.get("lines", [])      
+            self.execute_lines(lines)
+
+        except Exception as e:
+            self.output_lines.append(f"读取失败: {e}")
+#=====================代码解释================================
+    def execute_lines(self, lines):
+        """逐行解释执行代码"""
+        self.pc = 0
+        self.loop_stack = []  # 用于循环跳转
+
+        while self.pc < len(lines):
+            line = lines[self.pc].strip()
+
+            # 跳过空行和注释
+            if not line or line.startswith("//"):
+                self.pc += 1
+                continue
+
+            # PRINT
+            if line.startswith("PRINT"):
+                self.execute_print(line,self.current_file)
+                self.pc += 1
+
+            # LOOP
+            elif line.startswith("LOOP"):
+                self.execute_loop(lines)
+
+            # IF
+            elif line.startswith("IF"):
+                self.execute_if(line)
+                self.pc += 1
+
+            # END（循环外不应该出现，忽略）
+            elif line == "END":
+                self.output_lines.append("错误: 孤立的 END")
+                self.pc += 1
+
+            # 未识别
+            else:
+                self.output_lines.append(f"错误: 无法识别指令 '{line}'")
+                return
+
+    def execute_print(self, line,name):
+        """执行 PRINT 语句"""
+        content = line[5:].strip()
+
+        # 字符串
+        if content.startswith('"') and content.endswith('"'):
+            self.output_lines.append(name + " " + content[1:-1])
+
+        # 变量
+        elif content in self.variables:
+            self.output_lines.append(name + " " + str(self.variables[content]))
+
+        # 数字或表达式（先直接输出）
+        else:
+            self.output_lines.append(name + " " + content)
+
+    def execute_loop(self, lines):
+        """执行 LOOP 语句，支持嵌套"""
+        parts = lines[self.pc].strip().split()
+        if len(parts) < 2:
+            self.output_lines.append("错误: LOOP 缺少次数")
+            self.pc += 1
+            return
+
+        # 循环次数（可以是数字或变量）
+        if parts[1] in self.variables:
+            count = self.variables[parts[1]]
+        else:
+            try:
+                count = int(parts[1])
+            except:
+                self.output_lines.append(f"错误: LOOP 次数无效 '{parts[1]}'")
+                self.pc += 1
+                return
+
+        # 找到循环体的开始和结束
+        start = self.pc + 1
+        end = start
+        depth = 0
+
+        while end < len(lines):
+            l = lines[end].strip()
+            if l.startswith("LOOP"):
+                depth += 1
+            elif l == "END":
+                if depth == 0:
+                    break
+                else:
+                    depth -= 1
+            end += 1
+
+        if end >= len(lines):
+            self.output_lines.append("错误: LOOP 缺少 END")
+            return
+
+        # 执行循环
+        for _ in range(count):
+            i = start
+            while i < end:
+                l = lines[i].strip()
+                if not l or l.startswith("//"):
+                    i += 1
+                    continue
+
+                if l.startswith("PRINT"):
+                    self.execute_print(l)
+
+                elif l.startswith("IF"):
+                    self.execute_if(l)
+
+                elif l.startswith("LOOP"):
+                    # 嵌套循环
+                    self.pc = i
+                    self.execute_loop(lines)
+                    i = self.pc
+
+                i += 1
+
+        # 跳过后面的代码，直到循环结束
+        self.pc = end
+
+    def execute_if(self, line):
+        """执行 IF 语句"""
+        if " THEN " not in line:
+            self.output_lines.append("错误: IF 缺少 THEN")
+            return
+
+        condition = line[3:line.index(" THEN ")].strip()
+        action = line[line.index(" THEN ") + 6:].strip()
+
+        if self.eval_condition(condition):
+            if action.startswith("PRINT"):
+                self.execute_print(action)
+            elif action.startswith("SET"):
+                # 以后实现 SET
+                pass
+            else:
+                self.output_lines.append(f"错误: IF 后无法执行 '{action}'")
+
+    def eval_condition(self, condition):
+        """简单条件判断，支持变量和数字"""
+        for op in [">=", "<=", "==", ">", "<"]:
+            if op in condition:
+                left, right = condition.split(op)
+                left = left.strip()
+                right = right.strip()
+
+                # 获取左边值
+                if left in self.variables:
+                    left_val = self.variables[left]
+                else:
+                    try:
+                        left_val = int(left)
+                    except:
+                        return False
+
+                # 获取右边值
+                if right in self.variables:
+                    right_val = self.variables[right]
+                else:
+                    try:
+                        right_val = int(right)
+                    except:
+                        return False
+
+                # 比较
+                if op == ">":
+                    return left_val > right_val
+                elif op == "<":
+                    return left_val < right_val
+                elif op == ">=":
+                    return left_val >= right_val
+                elif op == "<=":
+                    return left_val <= right_val
+                elif op == "==":
+                    return left_val == right_val
+
+        return False
+
+    def execute_if(self, line):
+        """执行 IF 语句"""
+        if " THEN " not in line:
+            self.output_lines.append("错误: IF 缺少 THEN")
+            return
+
+        condition = line[3:line.index(" THEN ")].strip()
+        action = line[line.index(" THEN ") + 6:].strip()
+
+        if self.eval_condition(condition):
+            if action.startswith("PRINT"):
+                self.execute_print(action)
+            elif action.startswith("SET"):
+                # 以后实现 SET
+                pass
+            else:
+                self.output_lines.append(f"错误: IF 后无法执行 '{action}'")
+
+    
     def execute_command(self):
         parts = self.input_text.strip().split()
 

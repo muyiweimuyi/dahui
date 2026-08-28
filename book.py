@@ -1,7 +1,7 @@
 import pygame
 pygame.init() 
 text_size=20
-font = pygame.font.Font("k8x12-2.ttf", text_size)
+font = pygame.font.Font("unifont-16.0.04.ttf", text_size)
 pages = []
 book_pages=[]
 def read_book():

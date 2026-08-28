@@ -24,7 +24,7 @@ pygame.display.set_caption("方舟地图编辑器 v2")
 #=========================屏幕参数====================
 clock = pygame.time.Clock()
 text_size=20
-font = pygame.font.Font("k8x12-2.ttf", text_size)
+font = pygame.font.Font("unifont-16.0.04.ttf", text_size)
 running=1
 dog_pos=(0,0)
 first_pos=0
