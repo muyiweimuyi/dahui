@@ -91,55 +91,63 @@ class ComputerScreen(pygame.sprite.Sprite):
         self.screen_color = (0, 0, 0)
         self.output_lines = ["ASM-2100 Terminal Ready.", "Type .help for commands."]
         self.text = []
-        self.input_text=""
-        self.scoll_pos=0
-        self.input_pos=0
-        self.color=(0,255,0)
-        self.vivisible_lines=[]
-        self.mode="command"
-        self.font_y=self.font.get_height()
+        self.input_text = ""
+        self.scoll_pos = 0
+        self.input_pos = 0
+        self.color = (0, 255, 0)
+        self.vivisible_lines = []
+        self.mode = "command"
+        self.font_y = self.font.get_height()
         self.current_file = ""
+        self.variables = {}
+        self.pc = 0
+        self.loop_stack = []
+        self.wait_frames = 0
+        self.wait_until = 0
+        self.paused = False
+        self.running_programs = []
+
     def update(self):
         if not self.is_on:
             return
-
         if self.mode == "command":
             self.update_command_display()
         elif self.mode == "editor":
             self.update_editor_display()
+
     def handle(self, event):
         global computer_flag
         if event.type != pygame.KEYDOWN:
-                return
+            return
 
-        # 开关电脑
         keys = pygame.key.get_pressed()
-        if event.key == pygame.K_e and  (keys[pygame.K_LCTRL] or keys[pygame.K_RCTRL]):
+        if event.key == pygame.K_e and (keys[pygame.K_LCTRL] or keys[pygame.K_RCTRL]):
             computer_flag = not computer_flag
             self.update()
             return
 
-        # 电脑关闭时不处理其他按键
         if not computer_flag:
             return
 
-        # 根据模式分发
         if self.mode == "command":
             self.command_line(event)
         elif self.mode == "editor":
-            self.editor_line(event)   # 以后拆分编辑器
-#===============渲染字符=====
+            self.editor_line(event)
+
+    # =============== 渲染字符 ==============
     def get_outputline(self):
         total = len(self.output_lines)
         end = total - self.scoll_pos
-        start = max(0, end - (text_y-1))
+        start = max(0, end - (text_y - 1))
         return self.output_lines[start:end]
+
     def get_cursor_x(self):
         prompt = ">"
         prompt_width = self.font.size(prompt)[0]
         text_before_cursor = self.input_text[:self.input_pos]
         text_width = self.font.size(text_before_cursor)[0]
         return prompt_width + text_width
+
     def editor_line(self, event):
         line = self.edit_lines[self.edit_line_index]
 
@@ -166,7 +174,6 @@ class ComputerScreen(pygame.sprite.Sprite):
                 self.input_pos += 1
 
         elif event.key == pygame.K_RETURN:
-            # 当前行按回车：在该行下方插入一个新行
             self.edit_lines.insert(self.edit_line_index + 1, "")
             self.edit_line_index += 1
             self.input_pos = 0
@@ -180,8 +187,10 @@ class ComputerScreen(pygame.sprite.Sprite):
             if self.edit_line_index < len(self.edit_lines) - 1:
                 self.edit_line_index += 1
                 self.input_pos = min(self.input_pos, len(self.edit_lines[self.edit_line_index]))
-        elif event.key ==pygame.K_ESCAPE:
+
+        elif event.key == pygame.K_ESCAPE:
             self.save_program(self.current_file)
+
     def update_editor_display(self):
         self.image.fill(self.screen_color)
 
@@ -195,7 +204,6 @@ class ComputerScreen(pygame.sprite.Sprite):
             self.image.blit(text, (0, y))
             y += text_size
 
-        # 绘制光标
         line = self.edit_lines[self.edit_line_index]
         before = line[:self.input_pos]
         cursor_x = self.font.size("> " + before)[0]
@@ -206,6 +214,7 @@ class ComputerScreen(pygame.sprite.Sprite):
             (cursor_x, cursor_y),
             (cursor_x, cursor_y + text_size)
         )
+
     def command_line(self, event):
         if event.unicode and event.unicode.isprintable():
             char = event.unicode
@@ -219,8 +228,7 @@ class ComputerScreen(pygame.sprite.Sprite):
 
         elif event.key == pygame.K_RETURN:
             self.output_lines.append(">" + self.input_text)
-            # 这里以后可以调用命令解析
-            self.execute_command()   # 如果有命令解析函数
+            self.execute_command()
             self.input_text = ""
             self.input_pos = 0
             self.scoll_pos = 0
@@ -241,10 +249,10 @@ class ComputerScreen(pygame.sprite.Sprite):
         elif event.key == pygame.K_DOWN:
             if self.scoll_pos > 0:
                 self.scoll_pos -= 1
+
     def update_command_display(self):
         self.image.fill(self.screen_color)
 
-        # 绘制历史输出
         self.visible_lines = self.get_outputline()
         line = 0
         for lines in self.visible_lines:
@@ -252,24 +260,22 @@ class ComputerScreen(pygame.sprite.Sprite):
             self.image.blit(text, (0, line * text_size))
             line += 1
 
-        # 绘制输入行
         input_y = (text_y - 1) * text_size
         text_1 = self.font.render(">" + self.input_text, True, self.color)
         self.image.blit(text_1, (0, input_y))
 
-        # 绘制光标
         input_x = self.get_cursor_x()
         pygame.draw.line(
             self.image,
             self.color,
-            (input_x + 1, input_y),               # 加1是因为提示符 ">"
+            (input_x + 1, input_y),
             (input_x + 1, input_y + text_size)
         )
- #=========写入与读取=============================
+
+    # ========= 写入与读取 =============
     def load_program(self, name):
         filepath = os.path.join(PROGRAM_DIR, name + ".json")
 
-        # 文件不存在，创建空文件
         if not os.path.exists(filepath):
             if not os.path.exists(PROGRAM_DIR):
                 os.makedirs(PROGRAM_DIR)
@@ -285,10 +291,9 @@ class ComputerScreen(pygame.sprite.Sprite):
             self.edit_line_index = 0
             self.input_pos = 0
             self.output_lines.append(f"已创建新文件 {name}")
-            self.mode="editor"
+            self.mode = "editor"
             return True
 
-        # 文件存在，正常读取
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -297,13 +302,13 @@ class ComputerScreen(pygame.sprite.Sprite):
             self.edit_line_index = 0
             self.input_pos = 0
             self.output_lines.append(f"已读取 {name}")
-            self.mode="editor"
+            self.mode = "editor"
             return True
 
         except Exception as e:
             self.output_lines.append(f"读取失败: {e}")
             return False
-        
+
     def save_program(self, name):
         if not name:
             self.output_lines.append("没有文件名，无法保存")
@@ -325,8 +330,8 @@ class ComputerScreen(pygame.sprite.Sprite):
         self.output_lines.append(f"已保存 {name}")
         self.mode = "command"
         return True
+
     def list_programs(self):
-        """列出 programs 目录下所有可读的 JSON 文件"""
         if not os.path.exists(PROGRAM_DIR):
             self.output_lines.append("没有程序目录")
             return []
@@ -341,7 +346,7 @@ class ComputerScreen(pygame.sprite.Sprite):
 
             self.output_lines.append("可用的程序:")
             for f in json_files:
-                name = f[:-5]  # 去掉 .json 后缀
+                name = f[:-5]
                 self.output_lines.append(f"  {name}")
 
             return json_files
@@ -349,8 +354,8 @@ class ComputerScreen(pygame.sprite.Sprite):
         except Exception as e:
             self.output_lines.append(f"读取目录失败: {e}")
             return []
+
     def run_program(self, name):
-        """运行指定名字的程序文件"""
         filepath = os.path.join(PROGRAM_DIR, name + ".json")
 
         if not os.path.exists(filepath):
@@ -361,86 +366,129 @@ class ComputerScreen(pygame.sprite.Sprite):
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            lines = data.get("lines", [])      
-            self.execute_lines(lines)
+            lines = data.get("lines", [])
+
+            program = {
+                "name": name,
+                "lines": lines,
+                "pc": 0,
+                "wait_frames": 0,
+                "wait_until": 0,
+                "paused": False,
+                "variables": {"tick": 30},
+                "loop_stack": [],
+            }
+
+            self.running_programs.append(program)
+            self.output_lines.append(f"程序 {name} 已启动")
 
         except Exception as e:
             self.output_lines.append(f"读取失败: {e}")
-#=====================代码解释================================
-    def execute_lines(self, lines):
-        """逐行解释执行代码"""
-        self.pc = 0
-        self.loop_stack = []  # 用于循环跳转
 
-        while self.pc < len(lines):
-            line = lines[self.pc].strip()
+    def update_programs(self):
+        for prog in self.running_programs:
+            self.execute_program_step(prog)
 
-            # 跳过空行和注释
-            if not line or line.startswith("//"):
-                self.pc += 1
-                continue
-
-            # PRINT
-            if line.startswith("PRINT"):
-                self.execute_print(line,self.current_file)
-                self.pc += 1
-
-            # LOOP
-            elif line.startswith("LOOP"):
-                self.execute_loop(lines)
-
-            # IF
-            elif line.startswith("IF"):
-                self.execute_if(line)
-                self.pc += 1
-
-            # END（循环外不应该出现，忽略）
-            elif line == "END":
-                self.output_lines.append("错误: 孤立的 END")
-                self.pc += 1
-
-            # 未识别
+    def execute_program_step(self, prog):
+        if prog["paused"]:
+            if pygame.time.get_ticks() >= prog["wait_until"]:
+                prog["paused"] = False
             else:
-                self.output_lines.append(f"错误: 无法识别指令 '{line}'")
                 return
 
-    def execute_print(self, line,name):
-        """执行 PRINT 语句"""
-        content = line[5:].strip()
-
-        # 字符串
-        if content.startswith('"') and content.endswith('"'):
-            self.output_lines.append(name + " " + content[1:-1])
-
-        # 变量
-        elif content in self.variables:
-            self.output_lines.append(name + " " + str(self.variables[content]))
-
-        # 数字或表达式（先直接输出）
-        else:
-            self.output_lines.append(name + " " + content)
-
-    def execute_loop(self, lines):
-        """执行 LOOP 语句，支持嵌套"""
-        parts = lines[self.pc].strip().split()
-        if len(parts) < 2:
-            self.output_lines.append("错误: LOOP 缺少次数")
-            self.pc += 1
+        if prog["wait_frames"] > 0:
+            prog["wait_frames"] -= 1
             return
 
-        # 循环次数（可以是数字或变量）
-        if parts[1] in self.variables:
-            count = self.variables[parts[1]]
+        if prog["pc"] >= len(prog["lines"]):
+            return
+
+        line = prog["lines"][prog["pc"]].strip()
+
+        if not line or line.startswith("//"):
+            prog["pc"] += 1
+            return
+
+        if line.startswith("PRINT"):
+            self.execute_print_for_prog(prog, line)
+            prog["pc"] += 1
+
+        elif line.startswith("LET"):
+            self.execute_let_for_prog(prog, line)
+            prog["pc"] += 1
+
+        elif line.startswith("LOOP"):
+            self.execute_loop_for_prog(prog)
+            prog["pc"] += 1
+
+        elif line.startswith("IF"):
+            self.execute_if_for_prog(prog, line)
+            prog["pc"] += 1
+
+        elif line == "END":
+            prog["pc"] += 1
+
+        else:
+            self.output_lines.append(f"[{prog['name']}] 错误: 无法识别指令 '{line}'")
+            prog["pc"] += 1
+
+        prog["wait_frames"] = prog["variables"].get("tick", 1)
+
+    def execute_print_for_prog(self, prog, line):
+        content = line[5:].strip()
+        if content.startswith('"') and content.endswith('"'):
+            self.output_lines.append(f"[{prog['name']}] {content[1:-1]}")
+        elif content in prog["variables"]:
+            self.output_lines.append(f"[{prog['name']}] {prog['variables'][content]}")
+        else:
+            self.output_lines.append(f"[{prog['name']}] {content}")
+
+    def execute_let_for_prog(self, prog, line):
+        content = line[4:].strip()
+        if "=" not in content:
+            self.output_lines.append(f"[{prog['name']}] 错误: LET 缺少 =")
+            return
+        left, right = content.split("=")
+        var_name = left.strip()
+        value = self.eval_expr_for_prog(prog, right.strip())
+        prog["variables"][var_name] = value
+
+    def eval_expr_for_prog(self, prog, expr):
+        expr = expr.strip()
+        if expr in prog["variables"]:
+            return prog["variables"][expr]
+        try:
+            return int(expr)
+        except:
+            pass
+        if "+" in expr:
+            parts = expr.split("+")
+            return self.eval_expr_for_prog(prog, parts[0]) + self.eval_expr_for_prog(prog, parts[1])
+        if "-" in expr:
+            parts = expr.split("-")
+            return self.eval_expr_for_prog(prog, parts[0]) - self.eval_expr_for_prog(prog, parts[1])
+        return 0
+
+    def execute_loop_for_prog(self, prog):
+        lines = prog["lines"]
+        parts = lines[prog["pc"]].strip().split()
+
+        if len(parts) < 2:
+            self.output_lines.append(f"[{prog['name']}] 错误: LOOP 缺少次数")
+            prog["pc"] += 1
+            return
+
+        if parts[1] in prog["variables"]:
+            count = prog["variables"][parts[1]]
         else:
             try:
                 count = int(parts[1])
             except:
-                self.output_lines.append(f"错误: LOOP 次数无效 '{parts[1]}'")
-                self.pc += 1
+                self.output_lines.append(f"[{prog['name']}] 错误: LOOP 次数无效 '{parts[1]}'")
+                prog["pc"] += 1
                 return
 
-        # 找到循环体的开始和结束
-        start = self.pc + 1
+        start = prog["pc"] + 1
         end = start
         depth = 0
 
@@ -456,10 +504,9 @@ class ComputerScreen(pygame.sprite.Sprite):
             end += 1
 
         if end >= len(lines):
-            self.output_lines.append("错误: LOOP 缺少 END")
+            self.output_lines.append(f"[{prog['name']}] 错误: LOOP 缺少 END")
             return
 
-        # 执行循环
         for _ in range(count):
             i = start
             while i < end:
@@ -469,67 +516,64 @@ class ComputerScreen(pygame.sprite.Sprite):
                     continue
 
                 if l.startswith("PRINT"):
-                    self.execute_print(l)
+                    self.execute_print_for_prog(prog, l)
+
+                elif l.startswith("LET"):
+                    self.execute_let_for_prog(prog, l)
 
                 elif l.startswith("IF"):
-                    self.execute_if(l)
+                    self.execute_if_for_prog(prog, l)
 
                 elif l.startswith("LOOP"):
-                    # 嵌套循环
-                    self.pc = i
-                    self.execute_loop(lines)
-                    i = self.pc
+                    prog["pc"] = i
+                    self.execute_loop_for_prog(prog)
+                    i = prog["pc"]
 
                 i += 1
 
-        # 跳过后面的代码，直到循环结束
-        self.pc = end
+        prog["pc"] = end
 
-    def execute_if(self, line):
-        """执行 IF 语句"""
+    def execute_if_for_prog(self, prog, line):
         if " THEN " not in line:
-            self.output_lines.append("错误: IF 缺少 THEN")
+            self.output_lines.append(f"[{prog['name']}] 错误: IF 缺少 THEN")
             return
 
         condition = line[3:line.index(" THEN ")].strip()
         action = line[line.index(" THEN ") + 6:].strip()
 
-        if self.eval_condition(condition):
+        if self.eval_condition_for_prog(prog, condition):
             if action.startswith("PRINT"):
-                self.execute_print(action)
+                self.execute_print_for_prog(prog, action)
+            elif action.startswith("LET"):
+                self.execute_let_for_prog(prog, action)
             elif action.startswith("SET"):
-                # 以后实现 SET
                 pass
             else:
-                self.output_lines.append(f"错误: IF 后无法执行 '{action}'")
+                self.output_lines.append(f"[{prog['name']}] 错误: IF 后无法执行 '{action}'")
 
-    def eval_condition(self, condition):
-        """简单条件判断，支持变量和数字"""
+    def eval_condition_for_prog(self, prog, condition):
         for op in [">=", "<=", "==", ">", "<"]:
             if op in condition:
                 left, right = condition.split(op)
                 left = left.strip()
                 right = right.strip()
 
-                # 获取左边值
-                if left in self.variables:
-                    left_val = self.variables[left]
+                if left in prog["variables"]:
+                    left_val = prog["variables"][left]
                 else:
                     try:
                         left_val = int(left)
                     except:
                         return False
 
-                # 获取右边值
-                if right in self.variables:
-                    right_val = self.variables[right]
+                if right in prog["variables"]:
+                    right_val = prog["variables"][right]
                 else:
                     try:
                         right_val = int(right)
                     except:
                         return False
 
-                # 比较
                 if op == ">":
                     return left_val > right_val
                 elif op == "<":
@@ -543,35 +587,14 @@ class ComputerScreen(pygame.sprite.Sprite):
 
         return False
 
-    def execute_if(self, line):
-        """执行 IF 语句"""
-        if " THEN " not in line:
-            self.output_lines.append("错误: IF 缺少 THEN")
-            return
-
-        condition = line[3:line.index(" THEN ")].strip()
-        action = line[line.index(" THEN ") + 6:].strip()
-
-        if self.eval_condition(condition):
-            if action.startswith("PRINT"):
-                self.execute_print(action)
-            elif action.startswith("SET"):
-                # 以后实现 SET
-                pass
-            else:
-                self.output_lines.append(f"错误: IF 后无法执行 '{action}'")
-
-    
     def execute_command(self):
         parts = self.input_text.strip().split()
 
         if not parts:
             return
 
-        command = parts[0]          # 第一个词是命令
-        args = parts[1:]            # 后面的词是参数
-
-      
+        command = parts[0]
+        args = parts[1:]
 
         if command == ".help":
             self.output_lines.append(".open <file name>")
@@ -585,23 +608,19 @@ class ComputerScreen(pygame.sprite.Sprite):
         elif command == ".open":
             if args:
                 self.load_program(args[0])
-                self.current_file=args[0]
+                self.current_file = args[0]
             else:
                 self.output_lines.append(" .open need argumn  <file name>")
 
         elif command == ".run":
             if args:
-                self.current_file=args[0]
+                self.current_file = args[0]
                 self.run_program(args[0])
-                
             else:
                 self.output_lines.append("用法: .run <file name>")
 
         else:
-            self.output_lines.append(self.input_text+ "is not a command or a file or and manipulable object")
-
-
-
+            self.output_lines.append(self.input_text + " is not a command or a file or and manipulable object")
 
 
 class Socket(pygame.sprite.Sprite):

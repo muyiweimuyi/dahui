@@ -56,6 +56,7 @@ while running:
     # 绘制电脑系统（如果电脑标志为真）
     computer.computer_update(screen,book_and_computer)
     comp_screen.update()
+    comp_screen.update_programs()
     all_sprites.draw(screen,book_and_computer)
     pygame.display.flip()
     clock.tick(60)
