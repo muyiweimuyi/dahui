@@ -29,7 +29,7 @@ running=1
 dog_pos=(0,0)
 first_pos=0
 second_pos=0
-mouse_flag=["f","ob_ladder","none"]
+mouse_flag=["f","ob_ladder","drown","none"]
 map_data = []
 flag_counter=0
 #========================一些变量===========================
@@ -39,6 +39,8 @@ view=None
 UPDATE_EVENT = pygame.USEREVENT + 1
 # 在主循环中，定时（例如每 50 毫秒）发布一次
 pygame.time.set_timer(UPDATE_EVENT, 50)  # 每50ms触发一次
+preview_sprite = None  # 预览精灵（跟随鼠标）
+selected_sprite = None # 选中的精灵（用于拖拽）
 #======================世界/屏幕坐标===========================
 def world_to_screen(x,y):
     """世界坐标 -> 屏幕坐标"""
@@ -90,81 +92,159 @@ def pos_to_pos_creatfloor(first_pos,second_pos):
             objection=Floor(world_x,world_y,world_w,world_h)
             all_sprite.add(objection)
 #=========================鼠标逻辑=========================================
-def mouse_draw(event):
-    global first_pos 
-    global second_pos
-    global mouse_flag
-    global view
-    global flag_counter
-    mouse_pos=pygame.mouse.get_pos()
-    first_pos_text=font.render(f"起点: {first_pos}",True,(0,100,0))
-    second_pos_text=font.render(f"终点: {second_pos}",True,(0,100,0))
-    mode_text = font.render(f"模式: {mouse_flag[flag_counter]}", True, (0, 100,0))
-    screen.blit(first_pos_text,(0,0))
-    screen.blit(second_pos_text,(0,text_size))
-    screen.blit(mode_text, (0, text_size*2))
-    if event.type==pygame.KEYDOWN:
-       if event.key==pygame.K_w:
-            if flag_counter>0:
-                 flag_counter-=1
-            else:
-                flag_counter=len(mouse_flag)-1
-       if event.key==pygame.K_s:
-            if flag_counter<len(mouse_flag)-1:
-                    flag_counter+=1
-            else:
-                    flag_counter=0
-       if event.key==pygame.K_ESCAPE:
-                 first_pos=0 
-                 second_pos=0
-                 flag_counter=len(mouse_flag)-1
-    if mouse_flag[flag_counter]=="f":
-        if first_pos!=0 :
-            if second_pos!=0:
-                pygame.draw.rect(screen,(0,100,0),pos_to_pos(first_pos,second_pos),2)
-            else:
-                wx1,wy1=world_to_screen( first_pos[0],first_pos[1])
-                wx2,wy2= mouse_pos[0],mouse_pos[1]
-                # 计算左上角和宽高（允许任意顺序）
-                world_x = min(wx1, wx2)
-                world_y = min(wy1, wy2)
-                world_w = abs(wx2 - wx1)
-                world_h = abs(wy2 - wy1)
-                pygame.draw.rect(screen,(0,100,0),(world_x,world_y,world_w,world_h),2)
+# ==================== 事件处理 ====================
+def handle_events():
+    global flag_counter, first_pos, second_pos, preview_sprite, selected_sprite
+    
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            return False
+        
+        # 滚轮缩放
+        if event.type == pygame.MOUSEWHEEL:
+            handle_mouse_wheel(event)
+        
+        # 鼠标点击
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if first_pos==0:
-                first_pos=screen_to_world(mouse_pos)    
+            mouse_pos = pygame.mouse.get_pos()
+            world_pos = screen_to_world(mouse_pos)
+            
+            if mouse_flag[flag_counter] == "f":
+                # 地板模式：记录点
+                if first_pos == 0:
+                    first_pos = world_pos
+                else:
+                    second_pos = world_pos
             else:
-                second_pos=screen_to_world(mouse_pos)
-        if event.type==pygame.KEYDOWN:
-            if event.key==pygame.K_SPACE:
-                first_pos=0
-                second_pos=0
-            if event.key==pygame.K_RETURN:
-                wx1,wy1= first_pos[0],first_pos[1]
-                wx2,wy2= second_pos[0],second_pos[1]
-                world_x = min(wx1, wx2)
-                world_y = min(wy1, wy2)
-                world_w = abs(wx2 - wx1)
-                world_h = abs(wy2 - wy1)
-                objection=Floor(world_x,world_y,world_w,world_h)
-                all_sprite.add(objection)
-                first_pos=0
-                second_pos=0
-    elif mouse_flag[flag_counter]=="ob_ladder":
-        wx1,wy1=screen_to_world(mouse_pos)
-        view=ladder(wx1,wy1)
-        screen.blit(view.image, view.rect)
-        if event.type==pygame.KEYDOWN:
-            if event.key==pygame.K_SPACE:
-                first_pos=0
-                second_pos=0
-            if event.key==pygame.K_RETURN:
-                view.kill()
-                objection=ladder(wx1,wy1)
-                all_sprite.add(objection)
-                first_pos=0
-                second_pos=0
+                # 梯子/水坑模式：点击直接放置（或者你也可以用回车放置）
+                # 这里我们让点击也能放置
+                if mouse_flag[flag_counter] == "ob_ladder":
+                    obj = ladder(world_pos[0], world_pos[1])
+                    all_sprite.add(obj)
+                elif mouse_flag[flag_counter] == "drown":
+                    obj = Drown(world_pos[0], world_pos[1])
+                    all_sprite.add(obj)
+        
+        # 键盘事件
+        if event.type == pygame.KEYDOWN:
+            # 模式切换
+            if event.key == pygame.K_w:
+                flag_counter = (flag_counter - 1) % len(mouse_flag)
+                first_pos = 0
+                second_pos = 0
+            if event.key == pygame.K_s:
+                flag_counter = (flag_counter + 1) % len(mouse_flag)
+                first_pos = 0
+                second_pos = 0
+            
+            # ESC：取消选择
+            if event.key == pygame.K_ESCAPE:
+                first_pos = 0
+                second_pos = 0
+                selected_sprite = None
+            
+            # 地板模式专用
+            if mouse_flag[flag_counter] == "f":
+                if event.key == pygame.K_SPACE:
+                    first_pos = 0
+                    second_pos = 0
+                if event.key == pygame.K_RETURN and first_pos != 0 and second_pos != 0:
+                    wx1, wy1 = first_pos
+                    wx2, wy2 = second_pos
+                    world_x = min(wx1, wx2)
+                    world_y = min(wy1, wy2)
+                    world_w = abs(wx2 - wx1)
+                    world_h = abs(wy2 - wy1)
+                    obj = Floor(world_x, world_y, world_w, world_h)
+                    all_sprite.add(obj)
+                    first_pos = 0
+                    second_pos = 0
+            
+            # 梯子/水坑模式：回车放置
+            if mouse_flag[flag_counter] in ["ob_ladder", "drown"]:
+                if event.key == pygame.K_RETURN and preview_sprite is not None:
+                    # 复制预览精灵的位置，创建一个永久对象
+                    if mouse_flag[flag_counter] == "ob_ladder":
+                        obj = ladder(preview_sprite.world_x, preview_sprite.world_y)
+                    else:
+                        obj = Drown(preview_sprite.world_x, preview_sprite.world_y)
+                    all_sprite.add(obj)
+        
+    return True
+# ==================== 更新 ====================
+def update_all():
+    global preview_sprite, selected_sprite
+    mouse_pos = pygame.mouse.get_pos()
+    left_click = pygame.mouse.get_pressed()[0]
+    
+    # 更新预览精灵（跟随鼠标）
+    current_mode = mouse_flag[flag_counter]
+    if current_mode in ["ob_ladder", "drown"]:
+        world_pos = screen_to_world(mouse_pos)
+        
+        # 如果预览精灵不存在或类型不匹配，创建新的
+        if preview_sprite is None:
+            if current_mode == "ob_ladder":
+                preview_sprite = ladder(world_pos[0], world_pos[1])
+            elif current_mode == "ob_ladder":
+                preview_sprite = Drown(world_pos[0], world_pos[1])
+        else:
+            # 更新位置
+            preview_sprite.world_x = world_pos[0]
+            preview_sprite.world_y = world_pos[1]
+            preview_sprite.update(None, None, None)
+    else:
+        # 非梯子/水坑模式，清除预览精灵
+        preview_sprite = None
+    
+    # 更新所有精灵
+    for sprite in all_sprite:
+        sprite.update(mouse_pos, left_click, None)
+# ==================== 绘制 ====================
+def draw_all():
+    mouse_pos = pygame.mouse.get_pos()
+    
+    # 1. 清屏
+    screen.fill((100, 100, 100))
+    # 2. 显示文字信息
+    first_text = font.render(f"起点: {first_pos}", True, (0, 100, 0))
+    second_text = font.render(f"终点: {second_pos}", True, (0, 100, 0))
+    mode_text = font.render(f"模式: {mouse_flag[flag_counter]}", True, (0, 100, 0))
+    screen.blit(first_text, (0, 0))
+    screen.blit(second_text, (0, 20))
+    screen.blit(mode_text, (0, 40))
+    
+    # 3. 地板预览矩形
+    if mouse_flag[flag_counter] == "f":
+        if first_pos != 0:
+            if second_pos != 0:
+                pygame.draw.rect(screen, (0, 100, 0), pos_to_pos(first_pos, second_pos), 2)
+            else:
+                wx1, wy1 = world_to_screen(first_pos[0], first_pos[1])
+                wx2, wy2 = mouse_pos[0], mouse_pos[1]
+                rect = pygame.Rect(min(wx1, wx2), min(wy1, wy2),
+                                   abs(wx2 - wx1), abs(wy2 - wy1))
+                pygame.draw.rect(screen, (0, 100, 0), rect, 2)
+    
+    # 4. 绘制预览精灵（跟随鼠标）
+    if preview_sprite is not None:
+        screen.blit(preview_sprite.image, preview_sprite.rect)
+    
+    # 5. 绘制所有精灵
+    all_sprite.draw(screen)
+    
+    # 6. 底部提示栏
+    tips = [
+        "W/S: 切换模式 | ESC: 取消 | 方向键: 移动视野",
+        "滚轮: 缩放 | L: 保存地图 | 左键: 点击放置",
+        "空格: 清空 | Enter: 放置物体"
+    ]
+    for i, tip in enumerate(tips):
+        tip_surface = font.render(tip, True, (200, 200, 200))
+        screen.blit(tip_surface, (10, WINDOW_HEIGHT - 60 + i * 20))
+    
+    # 7. 更新屏幕
+    pygame.display.update()
 #========================精灵/变量=============================
 class Floor(pygame.sprite.Sprite):
     def __init__(self, x, y, width, height, color=(0, 100, 0)):
@@ -206,7 +286,7 @@ class Floor(pygame.sprite.Sprite):
             if self.rect.collidepoint(mouse_pos) and mouse_click:
                 self.flag = "choose"
 class MapSprite(pygame.sprite.Sprite):
-    def __init__(self, x, y,  color=None, image_path=None):
+    def __init__(self, x, y, image_path=None):
         """
         参数：
             x, y, width, height: 世界坐标和尺寸
@@ -216,8 +296,9 @@ class MapSprite(pygame.sprite.Sprite):
         super().__init__()
         self.world_x = x
         self.world_y = y
-        self.color = color
+        self.color = (0, 100, 0)
         self.image_original = None
+        self.flag = "unchoose"
         if image_path:
             try:
                 self.image_original = pygame.image.load(image_path).convert_alpha()
@@ -225,7 +306,7 @@ class MapSprite(pygame.sprite.Sprite):
                 self.world_h=self.image_original.get_height()
             except:
                 print(f"警告：无法加载图片 {image_path}，将使用纯色替代")
-                self.color = color or (0, 100, 0)  # 默认绿色
+               
         # 如果没有贴图且没有颜色，设为默认绿色
         if not self.image_original and not self.color:
             self.color = (0, 100, 0)
@@ -256,27 +337,17 @@ class MapSprite(pygame.sprite.Sprite):
 
         self.image = surf
         self.rect = surf.get_rect(topleft=(int(sx), int(sy)))
-        if self.flag == "choose":
-                self.world_x,self.world_y = screen_to_world(mouse_pos)
-                if event.key==pygame.K_k:
-                       self.kill()
-        if not mouse_click:
-                self.flag = "unchoose"
-        elif self.flag == "unchoose":
-            # 空闲状态：点击选中
-            if self.rect.collidepoint(mouse_pos) and mouse_click:
-                self.flag = "choose"
 
 class ladder(MapSprite):
     def __init__(self, x, y, image_path="ladder.png"):
         super().__init__(x, y, image_path)
-def update_all(mouse_pos, mouse_click, group,event):
-        """更新卡片拖拽和自动吸附"""
-        # 更新所有卡片
-        for sprite in group:
-            sprite.update(mouse_pos,mouse_click,event)
-
-
+class Drown(MapSprite):
+    def __init__(self, x, y, image_path="drown.png"):
+        super().__init__(x, y, image_path)
+        # 固定宽高来自贴图本身，MapSprite 已经自动设置了
+        # 如果需要手动指定固定尺寸，取消下面注释：
+        # self.world_w = 64
+        # self.world_h = 64
 
 #==========读和写============================================
 DATA_FILE = "map_data.json"
@@ -305,35 +376,29 @@ def load_map():
         if item["type"] == "Floor":
             sprite = Floor(item["x"], item["y"], item["w"], item["h"])
         elif item["type"] == "ladder":
-            sprite = ladder(item["x"], item["y"], color=tuple(item["color"]) if item.get("color") else None)
+            sprite = ladder(item["x"], item["y"])
+        
+        elif item["type"]=="Drown":
+            sprite = Drown(item["x"], item["y"])
+            
         all_sprite.add(sprite)
  #======================初始化============================
 load_map()          
 #==================主循环==============================
 while running:
-    screen.fill((0, 0, 0))
+    
     mouse_pos=pygame.mouse.get_pos()
     left_click = pygame.mouse.get_pressed()[0]
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            running = False
-        # 鼠标滚轮缩放
-        if event.type == UPDATE_EVENT:
-        # 什么也不做，只是为了保持事件循环活跃
-            pass
-        if event.type == pygame.MOUSEWHEEL:
-            handle_mouse_wheel(event)
-        
-        mouse_draw(event)
+    running = handle_events() 
     keys = pygame.key.get_pressed()
     if keys[pygame.K_UP]:
         pan_offset[1] += 2   # 调大数值移动更快
     if keys[pygame.K_DOWN]:
         pan_offset[1] -= 2
     if keys[pygame.K_LEFT]:
-        pan_offset[0] -= 2
-    if keys[pygame.K_RIGHT]:
         pan_offset[0] += 2
+    if keys[pygame.K_RIGHT]:
+        pan_offset[0] -= 2
     if keys[pygame.K_l]:
         map_data=[]
         for sprite in all_sprite:
@@ -347,10 +412,10 @@ while running:
             })
         # 然后保存
         save_data(map_data)
+    draw_all()
     sx, sy = world_to_screen(dog_pos[0], dog_pos[1])
     pygame.draw.circle(screen, (0, 100, 0), (int(sx), int(sy)), 5)
-    update_all(mouse_pos,left_click,all_sprite,event)
-    all_sprite.draw(screen)
+    update_all()
     pygame.display.update()
     clock.tick(60)
     

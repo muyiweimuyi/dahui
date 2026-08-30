@@ -1,9 +1,11 @@
+from turtle import down
 from typing import Self
 
 import pygame
 import json
 import sys
 import os
+import bus
 all_sprite=pygame.sprite.Group()
 all_floor=pygame.sprite.Group()
 DATA_FILE = "map_data.json"
@@ -124,13 +126,105 @@ class MapSprite(pygame.sprite.Sprite):
 
         self.image = surf
         self.rect = surf.get_rect(topleft=(int(sx), int(sy)))
-        
-            
-        
-
 class ladder(MapSprite):
     def __init__(self, x, y, image_path="ladder.png"):
         super().__init__(x, y, image_path)
+class Hardware(MapSprite):
+    def __init__(self, x, y, port, width=32, height=32, image_path=None, color=None):
+        super().__init__(x, y, color=color, image_path=image_path)
+        self.port = port  
+        self.world_w = width
+        self.world_h = height
+class PhysicsEntity(pygame.sprite.Sprite):
+    """只负责重力和碰撞的物理基类"""
+
+    def __init__(self):
+        super().__init__()
+        self.world_x = 0
+        self.world_y = 0
+        self.world_w = 0
+        self.world_h = 0
+        self.speed_y = 0
+        self.speed_x = 0
+        self.gr_speed = 1
+        self.junp_speed = 15
+        self.is_grounded = False
+        self.standing_on = None   # 新增：脚下踩着谁
+
+    def gr_update(self, floors_group):
+        """重力更新 + 垂直/水平碰撞"""
+        self.speed_y += self.gr_speed
+        self.world_y += self.speed_y
+
+        # 垂直碰撞
+        self.is_grounded = False
+        self.standing_on = None   # 每帧重置
+
+        for floor in floors_group:
+            if self.check_collision_with_floor(floor):
+                if self.speed_y >= 0:
+                    self.world_y = floor.world_y - self.world_h
+                    self.speed_y = 0
+                    self.is_grounded = True
+                    self.standing_on = floor   # 记录脚下
+                else:
+                    self.world_y = floor.world_y + floor.world_h
+                    self.speed_y = 0
+
+        # 水平碰撞
+        for floor in floors_group:
+            if self.check_collision_with_floor(floor):
+                center_x = self.world_x + self.world_w / 2
+                floor_center_x = floor.world_x + floor.world_w / 2
+                if center_x < floor_center_x:
+                    self.world_x = floor.world_x - self.world_w
+                else:
+                    self.world_x = floor.world_x + floor.world_w
+                self.speed_x = 0
+
+    def jump(self):
+        """跳跃"""
+        if self.is_grounded:
+            self.speed_y = -self.junp_speed
+            self.is_grounded = False
+            self.standing_on = None   # 跳跃时清除脚下
+
+    def check_collision_with_floor(self, floor):
+        """通用矩形碰撞检测"""
+        if (self.world_x + self.world_w > floor.world_x and
+            self.world_x < floor.world_x + floor.world_w and
+            self.world_y + self.world_h > floor.world_y and
+            self.world_y < floor.world_y + floor.world_h):
+            return True
+        return False
+class Drown(Hardware, PhysicsEntity):
+    def __init__(self, x, y, image_path="drown.png"):
+        Hardware.__init__(self, x, y, port="P1", image_path=image_path)
+        PhysicsEntity.__init__(self)
+
+        self.world_w = self.image_original.get_width()
+        self.world_h = self.image_original.get_height()
+        self.prev_world_x = x   # 新增：上一帧位置
+        self.prev_world_y = y
+        self.power_down = 0
+        self.power_left = 0
+        self.power_right = 0
+
+  
+    def update(self,floors_group):
+        Hardware.update(self)   # 更新贴图显示
+        if bus.ports[self.port]["command"]!=None:
+            if bus.ports[self.port]["command"]=="down":
+                self.speed_y+=0.5
+            elif bus.ports[self.port]["command"]=="left":
+                self.speed_x-=0.5
+            elif bus.ports[self.port]["command"]=="up":
+                self.speed_y-=0.5
+            elif bus.ports[self.port]["command"]=="right":
+                self.speed_x+=0.5
+        self.world_x+=self.speed_x
+        bus.ports[self.port]["command"]=None
+        self.gr_update(floors_group)
 #==============读文件==============
 def load_map():
     try:
@@ -145,129 +239,79 @@ def load_map():
         if item["type"] == "Floor":
             sprite = Floor(item["x"], item["y"], item["w"], item["h"])
             all_floor.add(sprite)
+            all_sprite.add(sprite)
         elif item["type"] == "ladder":
-            sprite = ladder(item["x"], item["y"], color=tuple(item["color"]) if item.get("color") else None)
-        all_sprite.add(sprite)
+            sprite = ladder(item["x"], item["y"])
+            all_sprite.add(sprite)
+        elif item["type"]=="Drown":
+            sprite= Drown(item["x"], item["y"])
+            all_floor.add(sprite)
+            all_sprite.add(sprite)
 # ========== 全局状态（世界坐标系） ==========
-class Dog(pygame.sprite.Sprite):
+class Dog(PhysicsEntity):
     def __init__(self):
         super().__init__()
-        global zoom, pan_offset,CAMERA_SMOOTHING ,DOG_SCREEN_X_RATIO,DOG_SCREEN_Y_RATIO 
+        global zoom, pan_offset, CAMERA_SMOOTHING, DOG_SCREEN_X_RATIO, DOG_SCREEN_Y_RATIO
         self.original_image = pygame.image.load("dahui.png").convert_alpha()
         self.image = self.original_image
         self.rect = self.image.get_rect()
-        self.world_x=0
-        self.world_y=0
-        self.world_w=self.original_image.get_width()
-        self.world_h=self.original_image.get_height()
-        self.junp_speed=15
-        self.speed_y=0
-        self.speed_x=0
-        self.gr_speed=1
-        self.is_grounded = False
-    def update(self,event,floors_group):
+        self.world_w = self.original_image.get_width()
+        self.world_h = self.original_image.get_height()
+
+    def update(self, event, floors_group):
+        # 物理更新
         self.gr_update(floors_group)
+
+        # 跟随脚下对象
+        if self.standing_on and hasattr(self.standing_on, "prev_world_x"):
+            dx = self.standing_on.world_x - self.standing_on.prev_world_x
+            dy = self.standing_on.world_y - self.standing_on.prev_world_y
+            self.world_x += dx
+            self.world_y += dy
+
+        # 左右接触检测
         self.touch_left = False
         self.touch_right = False
         old_x = self.world_x
-        # 试探左移
+
         self.world_x -= 5
-        if any(self.check_collision_with_floor(floor) for floor in floors_group):
+        if any(self.check_collision_with_floor(f) for f in floors_group):
             self.touch_left = True
         self.world_x = old_x
 
-        # 试探右移
         self.world_x += 5
-        if any(self.check_collision_with_floor(floor) for floor in floors_group):
+        if any(self.check_collision_with_floor(f) for f in floors_group):
             self.touch_right = True
         self.world_x = old_x
 
-        # 键盘移动
+        # 键盘输入
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_UP] :
+        if keys[pygame.K_UP]:
             self.jump()
         if keys[pygame.K_LEFT] and not self.touch_left:
             self.world_x -= 5
         if keys[pygame.K_RIGHT] and not self.touch_right:
             self.world_x += 5
+
+        # 渲染更新
         sx = MAP_OFFSET_X + pan_offset[0] + self.world_x * zoom
         sy = MAP_OFFSET_Y + pan_offset[1] + self.world_y * zoom
         sw = max(1, self.world_w * zoom)
         sh = max(1, self.world_h * zoom)
 
-        # 创建目标 Surface
-        surf = pygame.Surface((int(sw), int(sh)), pygame.SRCALPHA)  # 支持透明
-
-        if self.original_image:
-            # 有贴图：缩放图片并绘制到 surf
-            scaled = pygame.transform.scale(self.original_image, (int(sw), int(sh)))
-            surf.blit(scaled, (0, 0))
-        else:
-            # 纯色填充
-            surf.fill(self.color)
+        surf = pygame.Surface((int(sw), int(sh)), pygame.SRCALPHA)
+        scaled = pygame.transform.scale(self.original_image, (int(sw), int(sh)))
+        surf.blit(scaled, (0, 0))
 
         self.image = surf
         self.rect = surf.get_rect(topleft=(int(sx), int(sy)))
 
-       
-    def jump(self):
-        if self.is_grounded:        
-            self.is_grounded=not self.is_grounded
-            self.speed_y-=self.junp_speed
-            self.is_grounded=False
-    def gr_update(self,floors_group):
-        self.speed_y+=self.gr_speed
-        self.world_y+=self.speed_y
-        for floor in floors_group:
-            if self.check_collision_with_floor(floor):
-                if self.speed_y >= 0:  # 下落
-                    self.world_y = floor.world_y - self.world_h
-                    self.speed_y = 0
-                    self.is_grounded = True
-                else:  # 上升撞头
-                    self.world_y = floor.world_y + floor.world_h
-                    self.speed_y = 0
-
-               # 水平碰撞检测
-        for floor in floors_group:
-            if self.check_collision_with_floor(floor):
-                dog_center_x = self.world_x + self.world_w / 2
-                floor_center_x = floor.world_x + floor.world_w / 2
-        
-                if dog_center_x < floor_center_x:
-                    self.world_x = floor.world_x - self.world_w
-                else:
-                    self.world_x = floor.world_x + floor.world_w
-    def check_collision_with_floor(self, floor):
-        """检测狗是否与地板碰撞（世界坐标）"""
-        # 狗的范围
-        dog_left = self.world_x
-        dog_right = self.world_x + self.world_w
-        dog_top = self.world_y
-        dog_bottom = self.world_y + self.world_h
-        
-        # 地板的范围
-        floor_left = floor.world_x
-        floor_right = floor.world_x + floor.world_w
-        floor_top = floor.world_y
-        floor_bottom = floor.world_y + floor.world_h
-        
-        # 检测矩形重叠
-        if dog_right > floor_left and dog_left < floor_right:
-            if dog_bottom > floor_top and dog_top < floor_bottom:
-                return True
-        return False
-    def camera_update():
-                   # 计算狗在屏幕上的期望位置
+    def camera_update(self):
         target_screen_x = SCREEN_W * DOG_SCREEN_X_RATIO
         target_screen_y = SCREEN_H * DOG_SCREEN_Y_RATIO
 
-        # 根据期望屏幕位置反推目标镜头偏移
         target_pan_x = target_screen_x - MAP_OFFSET_X - (self.world_x + self.world_w / 2) * zoom
         target_pan_y = target_screen_y - MAP_OFFSET_Y - (self.world_y + self.world_h / 2) * zoom
 
-        # 平滑插值
         pan_offset[0] += (target_pan_x - pan_offset[0]) * CAMERA_SMOOTHING
         pan_offset[1] += (target_pan_y - pan_offset[1]) * CAMERA_SMOOTHING
-#调用loadmap()
-#默认dog（0，0）

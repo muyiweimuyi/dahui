@@ -5,6 +5,7 @@ import json
 import sys
 import pygame
 from pygame.constants import K_RALT
+import bus
 text_size=20
 
 # ========== 全局变量 ==========
@@ -427,10 +428,13 @@ class ComputerScreen(pygame.sprite.Sprite):
 
         elif line == "END":
             prog["pc"] += 1
-
+        elif line.startswith("WRITE"):
+            self.execute_write_for_prog(prog, line)
+            prog["pc"] += 1
         else:
             self.output_lines.append(f"[{prog['name']}] 错误: 无法识别指令 '{line}'")
             prog["pc"] += 1
+
 
         prog["wait_frames"] = prog["variables"].get("tick", 1)
 
@@ -586,7 +590,21 @@ class ComputerScreen(pygame.sprite.Sprite):
                     return left_val == right_val
 
         return False
+    def execute_write_for_prog(self, prog, line):
+        parts = line.split()
 
+        if len(parts) < 3:
+            self.output_lines.append(f"[{prog['name']}] 错误: WRITE 用法 WRITE 端口 命令")
+            return
+
+        port = parts[1]
+        command = parts[2]
+
+        if port in bus.ports:
+            bus.ports[port]["command"] = command
+            self.output_lines.append(f"[{prog['name']}] 写入 {port} -> {command}")
+        else:
+            self.output_lines.append(f"[{prog['name']}] 错误: 未知端口 '{port}'")
     def execute_command(self):
         parts = self.input_text.strip().split()
 
