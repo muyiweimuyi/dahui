@@ -1,3 +1,5 @@
+from pickle import NONE
+
 import pygame
 import computer
 import dog_and_camera
@@ -24,6 +26,7 @@ dog_sprite=pygame.sprite.GroupSingle()
 dog_sprite.add(dog)
 all_sprites = pygame.sprite.Group()
 # ---- 主循环 ----
+dog.update(None,dog_and_camera.all_floor)
 while running:
     # 事件处理
     book_st=player_book.bookflag
@@ -48,10 +51,11 @@ while running:
     # 绘制
     screen.fill((30, 30, 30))
     
-    
+   
     dog_and_camera.all_sprite.update()
     dog_and_camera.all_sprite.draw(screen)
     dog_sprite.draw(screen)
+    dog.camera_update()
     player_book.update(screen,book_and_computer)#书的更新
     # 绘制电脑系统（如果电脑标志为真）
     computer.computer_update(screen,book_and_computer)
@@ -60,7 +64,7 @@ while running:
     all_sprites.draw(screen,book_and_computer)
     pygame.display.flip()
     clock.tick(60)
-    print(comp_screen.input_text)
+    print(dog.world_x)
     book_and_computer=""
 
 pygame.quit()

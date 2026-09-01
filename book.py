@@ -27,7 +27,7 @@ class Book():
         self.image = pygame.image.load("book.png").convert_alpha()
         self.rect = self.image.get_rect()
         self.bookpage=0
-        self.bookflag=True
+        self.bookflag=False
         self.x=200
         self.y=200
     def update(self,screen,flag):
