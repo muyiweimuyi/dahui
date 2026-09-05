@@ -51,6 +51,11 @@ LOOP 10
 END
 ```
 支持嵌套循环。
+LOOP 后面直接跟一个数字或变量，表示循环次数。
+
+END 是循环结束标记。
+
+循环体在两者之间，可嵌套。pyinstaller --onefile --windowed --add-data "assets;assets" your_main_script.pypyinstaller --onefile --windowed --add-data "assets;assets" your_main_script.py
 ---
 
 ## 4. IF / THEN

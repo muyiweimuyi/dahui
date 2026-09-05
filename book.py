@@ -1,13 +1,13 @@
 import pygame
 pygame.init() 
 text_size=20
-font = pygame.font.Font("unifont-16.0.04.ttf", text_size)
+font = pygame.font.Font("assets/unifont-16.0.04.ttf", text_size)
 pages = []
 book_pages=[]
 def read_book():
     global pages
     global book_pages
-    with open("kn_book.txt", "r", encoding="utf-8") as f :
+    with open("assets/kn_book.txt", "r", encoding="utf-8") as f :
         for line in f:
             stripped = line.strip()# 去掉换行符和首尾空格
             print(stripped)
@@ -24,7 +24,7 @@ def read_book():
 class Book():
     def __init__(self):
         super().__init__()
-        self.image = pygame.image.load("book.png").convert_alpha()
+        self.image = pygame.image.load("assets/book.png").convert_alpha()
         self.rect = self.image.get_rect()
         self.bookpage=0
         self.bookflag=False

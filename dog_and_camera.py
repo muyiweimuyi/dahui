@@ -74,7 +74,7 @@ class Floor(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(topleft=(int(sx), int(sy)))
   
 class MapSprite(pygame.sprite.Sprite):
-    def __init__(self, x, y, image_path="image.png"):
+    def __init__(self, x, y, image_path="assets/image.png"):
         """
         参数：
             x, y, width, height: 世界坐标和尺寸
@@ -85,9 +85,11 @@ class MapSprite(pygame.sprite.Sprite):
         self.world_x = x
         self.world_y = y
         self.color = (0,100,0)
-        self.image = pygame.image.load(image_path).convert_alpha()
+        self.image_original = pygame.image.load(image_path).convert_alpha()
+        self.world_w = self.image_original.get_width()
+        self.world_h = self.image_original.get_height()
         self.flag=False
-
+        self.rect=self.image_original.get_rect()
     def update(self):
         """根据当前 zoom 和 pan_offset 生成屏幕图像"""
         global zoom, pan_offset
@@ -114,13 +116,13 @@ class MapSprite(pygame.sprite.Sprite):
         
 
 class ladder(MapSprite):
-    def __init__(self, x, y, image_path="ladder.png"):
+    def __init__(self, x, y, image_path="assets/ladder.png"):
         super().__init__(x, y, image_path)
 class Drown(MapSprite):
-    def __init__(self, x, y, image_path="drown.png"):
-        super.__init__(self, x, y,image_path)
+    def __init__(self, x, y, image_path="assets/drown.png"):
+        super().__init__(x, y, image_path)
         global all_floor
-        self.image=pygame.image.load("drown.png")
+        self.image=pygame.image.load("assets/drown.png")
         self.world_w = self.image.get_width()
         self.world_h = self.image.get_height()
         self.prev_world_x = x   # 新增：上一帧位置
@@ -129,7 +131,9 @@ class Drown(MapSprite):
         self.power_left = 0
         self.power_right = 0
         self.port="P1"
-  
+        self.speed_x=0
+        self.speed_y=0
+        self.gr_speed=1
     def update(self):
         if bus.ports[self.port]["command"]!=None:
             if bus.ports[self.port]["command"]=="down":
@@ -141,18 +145,35 @@ class Drown(MapSprite):
             elif bus.ports[self.port]["command"]=="right":
                 self.speed_x+=0.5
             bus.ports[self.port]["command"]=None
-        self._gr_update(all_floor)
+        self.gr_update(all_floor)
+        super().update()
+        print(self.world_x,self.world_y)
+    def gr_update(self, floors_group):
+        # ========== 水平移动 ==========
+        self.world_x += self.speed_x
 
-    def _gr_update(self, floors_group):
-        """重力 + 垂直碰撞 + 水平碰撞，并归零水平速度"""
-        # 应用重力
-        self.speed_y += self.gravity
+        # 水平碰撞（仅在水平速度不为零时检测）
+        if self.speed_x != 0:
+            for floor in floors_group:
+                if floor is self:
+                    continue
+                if self.check_collision_with_floor(floor):
+                    if self.speed_x > 0:  # 向右移动
+                        self.world_x = floor.world_x - self.world_w
+                    elif self.speed_x < 0:  # 向左移动
+                        self.world_x = floor.world_x + floor.world_w
+                    self.speed_x = 0   # 撞墙后停止水平速度
+
+        # ========== 垂直移动 ==========
+        self.speed_y += self.gr_speed
         self.world_y += self.speed_y
-        self.is_grounded = False
 
         # 垂直碰撞
+        self.is_grounded = False
         for floor in floors_group:
-            if self._check_collision_with_floor(floor):
+            if floor is self:
+                continue
+            if self.check_collision_with_floor(floor):
                 if self.speed_y >= 0:  # 下落
                     self.world_y = floor.world_y - self.world_h
                     self.speed_y = 0
@@ -160,24 +181,25 @@ class Drown(MapSprite):
                 else:  # 上升撞头
                     self.world_y = floor.world_y + floor.world_h
                     self.speed_y = 0
-
-        # 水平碰撞 + 速度归零
-        for floor in floors_group:
-            if self._check_collision_with_floor(floor):
-                dog_center_x = self.world_x + self.world_w / 2
-                floor_center_x = floor.world_x + floor.world_w / 2
-                if dog_center_x < floor_center_x:
-                    self.world_x = floor.world_x - self.world_w
-                else:
-                    self.world_x = floor.world_x + floor.world_w
-                self.speed_x = 0   # 撞墙后水平速度归零
-        self.prev_world_x+=self.speed_x
-    def _check_collision_with_floor(self, floor):
-        """检测与地板的碰撞（世界坐标）"""
-        return (self.world_x < floor.world_x + floor.world_w and
-                self.world_x + self.world_w > floor.world_x and
-                self.world_y < floor.world_y + floor.world_h and
-                self.world_y + self.world_h > floor.world_y)
+    def check_collision_with_floor(self, floor):
+        """检测狗是否与地板碰撞（世界坐标）"""
+        # 狗的范围
+        dog_left = self.world_x
+        dog_right = self.world_x + self.world_w
+        dog_top = self.world_y
+        dog_bottom = self.world_y + self.world_h
+        
+        # 地板的范围
+        floor_left = floor.world_x
+        floor_right = floor.world_x + floor.world_w
+        floor_top = floor.world_y
+        floor_bottom = floor.world_y + floor.world_h
+        
+        # 检测矩形重叠
+        if dog_right > floor_left and dog_left < floor_right:
+            if dog_bottom > floor_top and dog_top < floor_bottom:
+                return True
+        return False
 
 #==============读文件==============
 def load_map():
@@ -197,13 +219,14 @@ def load_map():
             sprite = ladder(item["x"], item["y"])
         elif item["type"]=="Drown":
             sprite=Drown(item["x"], item["y"])
+            all_floor.add(sprite)
         all_sprite.add(sprite)
 # ========== 全局状态（世界坐标系） ==========
 class Dog(pygame.sprite.Sprite):
     def __init__(self):
         super().__init__()
         global zoom, pan_offset,CAMERA_SMOOTHING ,DOG_SCREEN_X_RATIO,DOG_SCREEN_Y_RATIO 
-        self.original_image = pygame.image.load("dahui.png").convert_alpha()
+        self.original_image = pygame.image.load("assets/dahui.png").convert_alpha()
         self.image = self.original_image
         self.rect = self.image.get_rect()
         self.world_x=0
@@ -245,10 +268,16 @@ class Dog(pygame.sprite.Sprite):
         sw = max(1, self.world_w * zoom)
         sh = max(1, self.world_h * zoom)
         # 创建目标 Surface
+        # 创建目标 Surface
         surf = pygame.Surface((int(sw), int(sh)), pygame.SRCALPHA)  # 支持透明
+
+        # 关键：把狗图片缩放后画上去
+        scaled = pygame.transform.scale(self.original_image, (int(sw), int(sh)))
+        surf.blit(scaled, (0, 0))
+
         self.image = surf
         self.rect = surf.get_rect(topleft=(int(sx), int(sy)))
-       
+        self.camera_update()
     def jump(self):
         if self.is_grounded:        
             self.is_grounded=not self.is_grounded

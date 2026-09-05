@@ -42,7 +42,7 @@ PROGRAM_DIR="program"
 class Paper(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.image.load("paper_start.png").convert_alpha()
+        self.image = pygame.image.load("assets/paper_start.png").convert_alpha()
         self.rect = self.image.get_rect(center=(x, y))
         self.flag = "unchoose"      # 状态：unchoose / choose / inserted
         self.w = self.rect.width
@@ -83,7 +83,7 @@ class ComputerScreen(pygame.sprite.Sprite):
         global text_y
         global text_size
         global PROGRAM_DIR
-        self.font = pygame.font.Font("unifont-16.0.04.ttf", text_size)
+        self.font = pygame.font.Font("assets/unifont-16.0.04.ttf", text_size)
         self.width = width
         self.height = height
         self.image = pygame.Surface((width, height))
@@ -644,7 +644,7 @@ class ComputerScreen(pygame.sprite.Sprite):
 class Socket(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.image.load("socket.png").convert_alpha()
+        self.image = pygame.image.load("assets/socket.png").convert_alpha()
         self.rect = self.image.get_rect(topleft=(x, y))
         self.w = self.rect.width
         self.h = self.rect.height

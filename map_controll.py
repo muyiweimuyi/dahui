@@ -24,7 +24,7 @@ pygame.display.set_caption("方舟地图编辑器 v2")
 #=========================屏幕参数====================
 clock = pygame.time.Clock()
 text_size=20
-font = pygame.font.Font("unifont-16.0.04.ttf", text_size)
+font = pygame.font.Font("assets/unifont-16.0.04.ttf", text_size)
 running=1
 dog_pos=(0,0)
 first_pos=0
@@ -182,9 +182,9 @@ def mouse_draw():
         world_pos = screen_to_world(mouse_pos)
         
         if mouse_flag[flag_counter] == "ob_ladder":
-                view_image= pygame.image.load("ladder.png").convert_alpha()
+                view_image= pygame.image.load("assets/ladder.png").convert_alpha()
         else:
-                view_image= pygame.image.load("drown.png").convert_alpha()
+                view_image= pygame.image.load("assets/drown.png").convert_alpha()
         
         view_world_x, view_world_y =mouse_pos
         # 绘制预览
@@ -235,7 +235,7 @@ class Floor(pygame.sprite.Sprite):
             if self.rect.collidepoint(mouse_pos) and mouse_click:
                 self.flag = "choose"
 class MapSprite(pygame.sprite.Sprite):
-    def __init__(self, x, y,  color=None, image_path="image.png"):
+    def __init__(self, x, y,  color=None, image_path="assets/image.png"):
         """
         参数：
             x, y, width, height: 世界坐标和尺寸
@@ -282,11 +282,11 @@ class MapSprite(pygame.sprite.Sprite):
                 self.flag = "choose"
 
 class ladder(MapSprite):
-    def __init__(self, x, y, image_path="ladder.png"):
+    def __init__(self, x, y, image_path="assets/ladder.png"):
         super().__init__(x, y, image_path)
 class Drown(MapSprite):
-    def __init__(self, x, y, image_path="drown.png"):
-        super().__init__(x, y, image_path="drown.png")
+    def __init__(self, x, y, image_path="assets/drown.png"):
+        super().__init__(x, y, image_path="assets/drown.png")
         self.world_w=self.image.get_width()
         self.world_h=self.image.get_height()
         # 固定宽高来自贴图本身，MapSprite 已经自动设置了
